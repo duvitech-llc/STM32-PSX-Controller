@@ -1,0 +1,13 @@
+{
+    "cmake.cmakePath": "cmake",
+    "cmake.configureOnOpen": false,
+    "cmake.buildDirectory": "${workspaceFolder}/build/${buildType}",
+    "cmake.generator": "Unix Makefiles",
+    "files.associations": {
+        "*.h": "c",
+        "*.c": "c"
+    },
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": []
+}
