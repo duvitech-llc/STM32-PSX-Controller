@@ -57,7 +57,7 @@ uint8_t bitbang_spi_transfer(uint8_t out)
 
     for (uint8_t bit = 0; bit < 8; bit++)
     {
-        /* 1. Set MOSI BEFORE falling edge */
+        // 1. Set MOSI while CLK high (idle)
         if (out & (1 << bit))
             SPI_MOSI_HIGH();
         else
@@ -65,17 +65,18 @@ uint8_t bitbang_spi_transfer(uint8_t out)
 
         delay_us(half_period_us);
 
-        /* 2. Falling edge: slave samples MOSI */
+        // 2. Falling edge: controller samples MOSI
         SPI_CLK_LOW();
         delay_us(half_period_us);
 
-        /* 3. Rising edge: slave drives MISO */
+        // 3. Rising edge: controller updates MISO
         SPI_CLK_HIGH();
-        delay_us(half_period_us);
 
-        /* 4. Sample MISO */
+        // *** SAMPLE IMMEDIATELY AFTER RISING EDGE ***
         if (SPI_MISO_READ())
             in |= (1 << bit);
+
+        delay_us(half_period_us);  // optional small wait before next bit
     }
 
     return in;

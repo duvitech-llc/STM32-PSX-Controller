@@ -63,8 +63,8 @@ void Error_Handler(void);
 #define SPI_CLK_GPIO_Port GPIOA
 #define SPI_MISO_Pin GPIO_PIN_6
 #define SPI_MISO_GPIO_Port GPIOA
-#define SPI_MOSI_Pin GPIO_PIN_7
-#define SPI_MOSI_GPIO_Port GPIOA
+#define SPI_MOSI_Pin GPIO_PIN_15
+#define SPI_MOSI_GPIO_Port GPIOB
 #define SPI_CS_Pin GPIO_PIN_6
 #define SPI_CS_GPIO_Port GPIOC
 

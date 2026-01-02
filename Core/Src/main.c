@@ -97,39 +97,37 @@ static uint8_t psx_tx(uint8_t data)
 void PSX_Read(uint16_t *buttons)
 {
     uint8_t rx[5] = {0};
-    uint8_t tx[5] = {0x01, 0x42, 0x00, 0x00, 0x00};
 
 #if !BITBANG_SPI
     __HAL_SPI_CLEAR_OVRFLAG(&hspi1);
 #endif
 
-    SPI_CS_LOW();
-    delay_us(50);
+    bitbang_spi_cs_assert();
+    delay_us(250);
 
     rx[0] = psx_tx(0x01);  // Start
-    delay_us(20);
+    delay_us(100);
 
     rx[1] = psx_tx(0x42);  // Poll
-    delay_us(20);
-    
-    rx[2] = psx_tx(0x00);  // ACK
-    delay_us(20);
-    
+    delay_us(100);
+
+    rx[2] = psx_tx(0x00);  // ID / ACK
+    delay_us(100);
+
     rx[3] = psx_tx(0x00);  // Buttons low
-    delay_us(20);
+    delay_us(100);
 
     rx[4] = psx_tx(0x00);  // Buttons high
-    delay_us(20);
+    delay_us(100);
 
-    SPI_CS_HIGH();
-    delay_us(50);
+    bitbang_spi_cs_deassert();
+    delay_us(250);
 
     printf("RX: %02X %02X %02X %02X %02X\r\n",
            rx[0], rx[1], rx[2], rx[3], rx[4]);
 
     *buttons = ((uint16_t)rx[4] << 8) | rx[3];
 }
-
 
 void PSX_PrintButtons(uint16_t b)
 {
@@ -197,6 +195,7 @@ int main(void)
   MX_CRC_Init();
   /* USER CODE BEGIN 2 */
   DWT_Init();
+  bitbang_spi_init(25000);   // ~25 kHz, safe for PSX
   init_dma_logging();
   printf("\033c");
   printf("Duvitech PSX Controller Demo\r\n\r\n");
@@ -224,11 +223,11 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     BSP_LED_Toggle(LED_GREEN);
-    //PSX_Read(&buttons);
-    //PSX_PrintButtons(buttons);
+    PSX_Read(&buttons);
+    PSX_PrintButtons(buttons);
     // HAL_GPIO_TogglePin(SPI_MISO_GPIO_Port, SPI_MISO_Pin);
-    HAL_GPIO_TogglePin(SPI_MOSI_GPIO_Port, SPI_MOSI_Pin);
-    HAL_GPIO_TogglePin(SPI_CLK_GPIO_Port, SPI_CLK_Pin);
+    // HAL_GPIO_TogglePin(SPI_MOSI_GPIO_Port, SPI_MOSI_Pin);
+    // HAL_GPIO_TogglePin(SPI_CLK_GPIO_Port, SPI_CLK_Pin);
     HAL_Delay(100);
   }
   /* USER CODE END 3 */
@@ -509,27 +508,37 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, SPI_CLK_Pin|SPI_MOSI_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SPI_CLK_GPIO_Port, SPI_CLK_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SPI_MOSI_GPIO_Port, SPI_MOSI_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : SPI_CLK_Pin SPI_MOSI_Pin */
-  GPIO_InitStruct.Pin = SPI_CLK_Pin|SPI_MOSI_Pin;
+  /*Configure GPIO pin : SPI_CLK_Pin */
+  GPIO_InitStruct.Pin = SPI_CLK_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(SPI_CLK_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI_MISO_Pin */
   GPIO_InitStruct.Pin = SPI_MISO_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(SPI_MISO_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SPI_MOSI_Pin */
+  GPIO_InitStruct.Pin = SPI_MOSI_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(SPI_MOSI_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SPI_CS_Pin */
   GPIO_InitStruct.Pin = SPI_CS_Pin;
