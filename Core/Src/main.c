@@ -23,7 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "logging.h"
-#include <util.h>
+#include "util.h"
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
@@ -37,7 +37,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define BITBANG_SPI   1   // comment out or set to 0 to use HAL SPI
+#if BITBANG_SPI
+#include "bitbang_spi.h"
+#endif
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -50,8 +53,6 @@
 CRC_HandleTypeDef hcrc;
 
 I2C_HandleTypeDef hi2c1;
-
-SPI_HandleTypeDef hspi1;
 
 UART_HandleTypeDef huart5;
 UART_HandleTypeDef huart3;
@@ -70,7 +71,6 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_UART5_Init(void);
 static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
@@ -79,6 +79,82 @@ static void MX_CRC_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static uint8_t psx_tx(uint8_t data)
+{
+    uint8_t rx;
+#if BITBANG_SPI
+
+    return bitbang_spi_transfer(data);
+
+#else
+
+    HAL_SPI_TransmitReceive(&hspi1, &data, &rx, 1, HAL_MAX_DELAY);
+
+#endif
+    return rx;
+}
+
+void PSX_Read(uint16_t *buttons)
+{
+    uint8_t rx[5] = {0};
+    uint8_t tx[5] = {0x01, 0x42, 0x00, 0x00, 0x00};
+
+#if !BITBANG_SPI
+    __HAL_SPI_CLEAR_OVRFLAG(&hspi1);
+#endif
+
+    SPI_CS_LOW();
+    delay_us(50);
+
+    rx[0] = psx_tx(0x01);  // Start
+    delay_us(20);
+
+    rx[1] = psx_tx(0x42);  // Poll
+    delay_us(20);
+    
+    rx[2] = psx_tx(0x00);  // ACK
+    delay_us(20);
+    
+    rx[3] = psx_tx(0x00);  // Buttons low
+    delay_us(20);
+
+    rx[4] = psx_tx(0x00);  // Buttons high
+    delay_us(20);
+
+    SPI_CS_HIGH();
+    delay_us(50);
+
+    printf("RX: %02X %02X %02X %02X %02X\r\n",
+           rx[0], rx[1], rx[2], rx[3], rx[4]);
+
+    *buttons = ((uint16_t)rx[4] << 8) | rx[3];
+}
+
+
+void PSX_PrintButtons(uint16_t b)
+{
+    printf("Buttons: ");
+
+    if (!(b & (1<<0)))  printf("SELECT ");
+    if (!(b & (1<<1)))  printf("L3 ");
+    if (!(b & (1<<2)))  printf("R3 ");
+    if (!(b & (1<<3)))  printf("START ");
+    if (!(b & (1<<4)))  printf("UP ");
+    if (!(b & (1<<5)))  printf("RIGHT ");
+    if (!(b & (1<<6)))  printf("DOWN ");
+    if (!(b & (1<<7)))  printf("LEFT ");
+
+    if (!(b & (1<<8)))  printf("L2 ");
+    if (!(b & (1<<9)))  printf("R2 ");
+    if (!(b & (1<<10))) printf("L1 ");
+    if (!(b & (1<<11))) printf("R1 ");
+    if (!(b & (1<<12))) printf("TRIANGLE ");
+    if (!(b & (1<<13))) printf("CIRCLE ");
+    if (!(b & (1<<14))) printf("CROSS ");
+    if (!(b & (1<<15))) printf("SQUARE ");
+
+    printf("\r\n");
+}
 
 /* USER CODE END 0 */
 
@@ -90,6 +166,8 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+
+  uint16_t buttons;
 
   /* USER CODE END 1 */
 
@@ -114,7 +192,6 @@ int main(void)
   MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_I2C1_Init();
-  MX_SPI1_Init();
   MX_UART5_Init();
   MX_USB_DEVICE_Init();
   MX_CRC_Init();
@@ -122,10 +199,11 @@ int main(void)
   DWT_Init();
   init_dma_logging();
   printf("\033c");
-  printf("Duvitech Demo\r\n\r\n");
+  printf("Duvitech PSX Controller Demo\r\n\r\n");
   printf("CPU Clock Frequency: %lu MHz\r\n", HAL_RCC_GetSysClockFreq() / 1000000);
 
-  printf("Initializing...\r\n");
+  printf("PS1 Controller Init\r\n");
+
 
   /* USER CODE END 2 */
 
@@ -146,7 +224,12 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     BSP_LED_Toggle(LED_GREEN);
-    HAL_Delay(500);
+    //PSX_Read(&buttons);
+    //PSX_PrintButtons(buttons);
+    // HAL_GPIO_TogglePin(SPI_MISO_GPIO_Port, SPI_MISO_Pin);
+    HAL_GPIO_TogglePin(SPI_MOSI_GPIO_Port, SPI_MOSI_Pin);
+    HAL_GPIO_TogglePin(SPI_CLK_GPIO_Port, SPI_CLK_Pin);
+    HAL_Delay(100);
   }
   /* USER CODE END 3 */
 }
@@ -286,54 +369,6 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
-
-}
-
-/**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI1_Init(void)
-{
-
-  /* USER CODE BEGIN SPI1_Init 0 */
-
-  /* USER CODE END SPI1_Init 0 */
-
-  /* USER CODE BEGIN SPI1_Init 1 */
-
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 0x0;
-  hspi1.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
-  hspi1.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
-  hspi1.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
-  hspi1.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
-  hspi1.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
-  hspi1.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
-  hspi1.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
-  hspi1.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
-  hspi1.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
-  hspi1.Init.IOSwap = SPI_IO_SWAP_DISABLE;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI1_Init 2 */
-
-  /* USER CODE END SPI1_Init 2 */
 
 }
 
@@ -478,14 +513,30 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(CS_GPIO_Port, CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, SPI_CLK_Pin|SPI_MOSI_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : CS_Pin */
-  GPIO_InitStruct.Pin = CS_Pin;
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pins : SPI_CLK_Pin SPI_MOSI_Pin */
+  GPIO_InitStruct.Pin = SPI_CLK_Pin|SPI_MOSI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(CS_GPIO_Port, &GPIO_InitStruct);
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SPI_MISO_Pin */
+  GPIO_InitStruct.Pin = SPI_MISO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(SPI_MISO_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : SPI_CS_Pin */
+  GPIO_InitStruct.Pin = SPI_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
+  HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
