@@ -22,6 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+
 #include "logging.h"
 #include "util.h"
 #include <stdio.h>
@@ -37,7 +38,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define BITBANG_SPI   1   // comment out or set to 0 to use HAL SPI
+#define BITBANG_SPI   0   // comment out or set to 0 to use HAL SPI
 #if BITBANG_SPI
 #include "bitbang_spi.h"
 #endif
@@ -54,10 +55,9 @@ CRC_HandleTypeDef hcrc;
 
 I2C_HandleTypeDef hi2c1;
 
-UART_HandleTypeDef huart5;
+SPI_HandleTypeDef hspi3;
+
 UART_HandleTypeDef huart3;
-DMA_HandleTypeDef hdma_uart5_rx;
-DMA_HandleTypeDef hdma_uart5_tx;
 DMA_HandleTypeDef hdma_usart3_rx;
 DMA_HandleTypeDef hdma_usart3_tx;
 
@@ -71,14 +71,66 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_UART5_Init(void);
 static void MX_CRC_Init(void);
+static void MX_SPI3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void PSX_Init(void)
+{
+    uint8_t rx;
+#if !BITBANG_SPI
+    
+#else
+    // Enter config mode
+    bitbang_spi_cs_assert();
+    bitbang_spi_transfer(0x01);
+    bitbang_spi_transfer(0x43);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_transfer(0x01);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_cs_deassert();
+    HAL_Delay(10);
+    
+    // Enable analog mode
+    bitbang_spi_cs_assert();
+    bitbang_spi_transfer(0x01);
+    bitbang_spi_transfer(0x44);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_transfer(0x01);  // Analog mode
+    bitbang_spi_transfer(0x03);  // Lock
+    bitbang_spi_cs_deassert();
+    HAL_Delay(10);
+    
+    // Enable vibration
+    bitbang_spi_cs_assert();
+    bitbang_spi_transfer(0x01);
+    bitbang_spi_transfer(0x4D);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_transfer(0x01);
+    bitbang_spi_transfer(0xFF);
+    bitbang_spi_transfer(0xFF);
+    bitbang_spi_transfer(0xFF);
+    bitbang_spi_transfer(0xFF);
+    bitbang_spi_cs_deassert();
+    HAL_Delay(10);
+    
+    // Exit config mode
+    bitbang_spi_cs_assert();
+    bitbang_spi_transfer(0x01);
+    bitbang_spi_transfer(0x43);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_transfer(0x00);
+    bitbang_spi_transfer(0x5A);
+    bitbang_spi_cs_deassert();
+    HAL_Delay(10);
+#endif
+}
+
 static uint8_t psx_tx(uint8_t data)
 {
     uint8_t rx;
@@ -88,7 +140,7 @@ static uint8_t psx_tx(uint8_t data)
 
 #else
 
-    HAL_SPI_TransmitReceive(&hspi1, &data, &rx, 1, HAL_MAX_DELAY);
+    HAL_SPI_TransmitReceive(&hspi3, &data, &rx, 1, HAL_MAX_DELAY);
 
 #endif
     return rx;
@@ -96,14 +148,26 @@ static uint8_t psx_tx(uint8_t data)
 
 void PSX_Read(uint16_t *buttons)
 {
+
+    uint8_t tx[5] = {0x01, 0x42, 0x00, 0x00, 0x00};
     uint8_t rx[5] = {0};
 
 #if !BITBANG_SPI
-    __HAL_SPI_CLEAR_OVRFLAG(&hspi1);
-#endif
+    HAL_GPIO_WritePin(PS1_CS_GPIO_Port, PS1_CS_Pin, GPIO_PIN_RESET);
+    delay_us(10);
+    
+    for (int i = 0; i < 5; i++)
+    {
+        rx[i] = psx_tx(tx[i]);
+        delay_us(10);
+    }
+
+    HAL_GPIO_WritePin(PS1_CS_GPIO_Port, PS1_CS_Pin, GPIO_PIN_SET);
+    delay_us(10);
+#else
 
     bitbang_spi_cs_assert();
-    delay_us(250);
+    delay_us(10);
 
     rx[0] = psx_tx(0x01);  // Start
     delay_us(100);
@@ -121,8 +185,8 @@ void PSX_Read(uint16_t *buttons)
     delay_us(100);
 
     bitbang_spi_cs_deassert();
-    delay_us(250);
-
+    delay_us(10);
+#endif
     printf("RX: %02X %02X %02X %02X %02X\r\n",
            rx[0], rx[1], rx[2], rx[3], rx[4]);
 
@@ -190,12 +254,12 @@ int main(void)
   MX_DMA_Init();
   MX_USART3_UART_Init();
   MX_I2C1_Init();
-  MX_UART5_Init();
   MX_USB_DEVICE_Init();
   MX_CRC_Init();
+  MX_SPI3_Init();
   /* USER CODE BEGIN 2 */
   DWT_Init();
-  bitbang_spi_init(25000);   // ~25 kHz, safe for PSX
+  HAL_GPIO_WritePin(PS1_CS_GPIO_Port, PS1_CS_Pin, GPIO_PIN_SET);
   init_dma_logging();
   printf("\033c");
   printf("Duvitech PSX Controller Demo\r\n\r\n");
@@ -372,50 +436,50 @@ static void MX_I2C1_Init(void)
 }
 
 /**
-  * @brief UART5 Initialization Function
+  * @brief SPI3 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_UART5_Init(void)
+static void MX_SPI3_Init(void)
 {
 
-  /* USER CODE BEGIN UART5_Init 0 */
+  /* USER CODE BEGIN SPI3_Init 0 */
 
-  /* USER CODE END UART5_Init 0 */
+  /* USER CODE END SPI3_Init 0 */
 
-  /* USER CODE BEGIN UART5_Init 1 */
+  /* USER CODE BEGIN SPI3_Init 1 */
 
-  /* USER CODE END UART5_Init 1 */
-  huart5.Instance = UART5;
-  huart5.Init.BaudRate = 115200;
-  huart5.Init.WordLength = UART_WORDLENGTH_8B;
-  huart5.Init.StopBits = UART_STOPBITS_1;
-  huart5.Init.Parity = UART_PARITY_NONE;
-  huart5.Init.Mode = UART_MODE_TX_RX;
-  huart5.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart5.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart5.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart5.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart5.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart5) != HAL_OK)
+  /* USER CODE END SPI3_Init 1 */
+  /* SPI3 parameter configuration*/
+  hspi3.Instance = SPI3;
+  hspi3.Init.Mode = SPI_MODE_MASTER;
+  hspi3.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi3.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi3.Init.CLKPolarity = SPI_POLARITY_HIGH;
+  hspi3.Init.CLKPhase = SPI_PHASE_2EDGE;
+  hspi3.Init.NSS = SPI_NSS_SOFT;
+  hspi3.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi3.Init.FirstBit = SPI_FIRSTBIT_LSB;
+  hspi3.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi3.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi3.Init.CRCPolynomial = 0x0;
+  hspi3.Init.NSSPMode = SPI_NSS_PULSE_ENABLE;
+  hspi3.Init.NSSPolarity = SPI_NSS_POLARITY_LOW;
+  hspi3.Init.FifoThreshold = SPI_FIFO_THRESHOLD_01DATA;
+  hspi3.Init.TxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi3.Init.RxCRCInitializationPattern = SPI_CRC_INITIALIZATION_ALL_ZERO_PATTERN;
+  hspi3.Init.MasterSSIdleness = SPI_MASTER_SS_IDLENESS_00CYCLE;
+  hspi3.Init.MasterInterDataIdleness = SPI_MASTER_INTERDATA_IDLENESS_00CYCLE;
+  hspi3.Init.MasterReceiverAutoSusp = SPI_MASTER_RX_AUTOSUSP_DISABLE;
+  hspi3.Init.MasterKeepIOState = SPI_MASTER_KEEP_IO_STATE_DISABLE;
+  hspi3.Init.IOSwap = SPI_IO_SWAP_DISABLE;
+  if (HAL_SPI_Init(&hspi3) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart5, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart5, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart5) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN UART5_Init 2 */
+  /* USER CODE BEGIN SPI3_Init 2 */
 
-  /* USER CODE END UART5_Init 2 */
+  /* USER CODE END SPI3_Init 2 */
 
 }
 
@@ -483,12 +547,6 @@ static void MX_DMA_Init(void)
   /* DMA1_Stream1_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 3, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
-  /* DMA1_Stream2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream2_IRQn, 3, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream2_IRQn);
-  /* DMA1_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 3, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
 
 }
 
@@ -518,7 +576,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(SPI_MOSI_GPIO_Port, SPI_MOSI_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOC, SPI_CS_Pin|PS1_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : SPI_CLK_Pin */
   GPIO_InitStruct.Pin = SPI_CLK_Pin;
@@ -546,6 +604,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PS1_CS_Pin */
+  GPIO_InitStruct.Pin = PS1_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(PS1_CS_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

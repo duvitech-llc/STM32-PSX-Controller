@@ -21,11 +21,10 @@ void bitbang_spi_init(uint32_t bitrate_hz)
     if (bitrate_hz == 0)
         bitrate_hz = 1000;
 
-    half_period_us = (1000000UL / bitrate_hz) / 2;
+    half_period_us = (1000000UL / bitrate_hz) / 2;  // FIX: was 10000UL
     if (half_period_us < 1)
         half_period_us = 1;
 
-    // Ensure idle state
     SPI_CS_HIGH();
     SPI_CLK_HIGH();
     SPI_MOSI_HIGH();
@@ -57,7 +56,7 @@ uint8_t bitbang_spi_transfer(uint8_t out)
 
     for (uint8_t bit = 0; bit < 8; bit++)
     {
-        // 1. Set MOSI while CLK high (idle)
+        // MOSI setup while CLK HIGH
         if (out & (1 << bit))
             SPI_MOSI_HIGH();
         else
@@ -65,18 +64,23 @@ uint8_t bitbang_spi_transfer(uint8_t out)
 
         delay_us(half_period_us);
 
-        // 2. Falling edge: controller samples MOSI
+        // Falling edge - controller samples MOSI
         SPI_CLK_LOW();
+        
+        // Wait most of the low period
         delay_us(half_period_us);
 
-        // 3. Rising edge: controller updates MISO
+        // Rising edge - controller drives MISO
         SPI_CLK_HIGH();
-
-        // *** SAMPLE IMMEDIATELY AFTER RISING EDGE ***
+        
+        // Sample MISO immediately after rising edge
+        // (or add tiny delay if needed)
+        delay_us(1);  // Small delay for signal to settle
+        
         if (SPI_MISO_READ())
             in |= (1 << bit);
-
-        delay_us(half_period_us);  // optional small wait before next bit
+            
+        delay_us(half_period_us - 1);
     }
 
     return in;

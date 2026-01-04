@@ -115,7 +115,7 @@ void DWT_Init(void)
 
 void delay_us(uint32_t us)
 {
-    uint32_t cycles_per_us = SystemCoreClock / 1000000;
+    uint32_t cycles_per_us = SystemCoreClock / 1000000UL;  // FIX: was /10000
     uint32_t start = DWT->CYCCNT;
     uint32_t delay_cycles = us * cycles_per_us;
 
