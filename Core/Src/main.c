@@ -146,11 +146,10 @@ static uint8_t psx_tx(uint8_t data)
     return rx;
 }
 
-void PSX_Read(uint16_t *buttons)
+void PSX_Read(uint16_t *buttons, uint8_t rx[5])
 {
 
     uint8_t tx[5] = {0x01, 0x42, 0x00, 0x00, 0x00};
-    uint8_t rx[5] = {0};
 
 #if !BITBANG_SPI
     HAL_GPIO_WritePin(PS1_CS_GPIO_Port, PS1_CS_Pin, GPIO_PIN_RESET);
@@ -187,14 +186,17 @@ void PSX_Read(uint16_t *buttons)
     bitbang_spi_cs_deassert();
     delay_us(10);
 #endif
-    printf("RX: %02X %02X %02X %02X %02X\r\n",
-           rx[0], rx[1], rx[2], rx[3], rx[4]);
 
     *buttons = ((uint16_t)rx[4] << 8) | rx[3];
 }
 
 void PSX_PrintButtons(uint16_t b)
 {
+    // Move cursor up 1 line (RX line) and carriage return
+    printf("\033[F");  // Move cursor up one line
+    printf("\r");      // Carriage return to start of line
+
+    // Print buttons
     printf("Buttons: ");
 
     if (!(b & (1<<0)))  printf("SELECT ");
@@ -215,7 +217,42 @@ void PSX_PrintButtons(uint16_t b)
     if (!(b & (1<<14))) printf("CROSS ");
     if (!(b & (1<<15))) printf("SQUARE ");
 
+    // Clear to end of line so old characters disappear
+    printf("\033[K\r\n");  
+}
+
+void PSX_PrintStatus(uint16_t buttons, uint8_t rx[5])
+{
+    // Move cursor to top-left
+    printf("\033[H");   // Home cursor
+    printf("\033[J");   // Clear everything below cursor (optional, keeps screen clean)
+
+    // Print RX line
+    printf("RX: %02X %02X %02X %02X %02X\r\n",
+           rx[0], rx[1], rx[2], rx[3], rx[4]);
+
+    // Print Buttons line
+    printf("Buttons: ");
+
+    if (!(buttons & (1<<0)))  printf("SELECT ");
+    if (!(buttons & (1<<1)))  printf("L3 ");
+    if (!(buttons & (1<<2)))  printf("R3 ");
+    if (!(buttons & (1<<3)))  printf("START ");
+    if (!(buttons & (1<<4)))  printf("UP ");
+    if (!(buttons & (1<<5)))  printf("RIGHT ");
+    if (!(buttons & (1<<6)))  printf("DOWN ");
+    if (!(buttons & (1<<7)))  printf("LEFT ");
+    if (!(buttons & (1<<8)))  printf("L2 ");
+    if (!(buttons & (1<<9)))  printf("R2 ");
+    if (!(buttons & (1<<10))) printf("L1 ");
+    if (!(buttons & (1<<11))) printf("R1 ");
+    if (!(buttons & (1<<12))) printf("TRIANGLE ");
+    if (!(buttons & (1<<13))) printf("CIRCLE ");
+    if (!(buttons & (1<<14))) printf("CROSS ");
+    if (!(buttons & (1<<15))) printf("SQUARE ");
+
     printf("\r\n");
+    fflush(stdout); // ensure immediate output
 }
 
 /* USER CODE END 0 */
@@ -230,6 +267,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
 
   uint16_t buttons;
+  uint8_t rx[5];
 
   /* USER CODE END 1 */
 
@@ -287,12 +325,13 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     BSP_LED_Toggle(LED_GREEN);
-    PSX_Read(&buttons);
-    PSX_PrintButtons(buttons);
+    PSX_Read(&buttons, rx);
+    PSX_PrintStatus(buttons, rx);
+    
     // HAL_GPIO_TogglePin(SPI_MISO_GPIO_Port, SPI_MISO_Pin);
     // HAL_GPIO_TogglePin(SPI_MOSI_GPIO_Port, SPI_MOSI_Pin);
     // HAL_GPIO_TogglePin(SPI_CLK_GPIO_Port, SPI_CLK_Pin);
-    HAL_Delay(100);
+    HAL_Delay(25);
   }
   /* USER CODE END 3 */
 }
@@ -631,6 +670,10 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	}
 }
 
+void BSP_PB_Callback(Button_TypeDef Button)
+{
+    BSP_LED_Toggle(LED_RED);
+}
 
 /* USER CODE END 4 */
 
