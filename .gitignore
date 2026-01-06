@@ -34,8 +34,7 @@ compile_commands.json
 *.ilk
 
 # IDE and Editor files
-.vscode/.cortex-debug.*
-.vscode/ipch
+.vscode/
 *.code-workspace
 .history/
 *.swp
