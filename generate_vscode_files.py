@@ -15,7 +15,7 @@ Placeholders supported:
 - ${ELF_NAME}
 - ${SVD_FILE}
 
-Run from the workspace root: python3 .vscode/generate_vscode.py
+Run from the workspace root: python3 generate_vscode_files.py
 """
 import json
 import os
@@ -23,9 +23,9 @@ import platform
 import re
 import sys
 
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
+ROOT = os.path.abspath(os.path.dirname(__file__))
 PLATFORM_FILE = os.path.join(ROOT, 'platform.json')
-TEMPLATES = ['c_cpp_properties.json', 'launch.json', 'tasks.json']
+TEMPLATES = ['c_cpp_properties.json', 'launch.json', 'tasks.json', 'gcc-arm-none-eabi.cmake']
 
 # Embedded templates — the generator will write these files with platform values
 EMBED_TEMPLATES = {
@@ -189,6 +189,54 @@ EMBED_TEMPLATES = {
         }
     ]
 }
+''',
+
+    'gcc-arm-none-eabi.cmake': '''set(CMAKE_SYSTEM_NAME               Generic)
+set(CMAKE_SYSTEM_PROCESSOR          arm)
+
+set(CMAKE_C_COMPILER_ID GNU)
+set(CMAKE_CXX_COMPILER_ID GNU)
+
+# Some default GCC settings
+# arm-none-eabi- must be part of path environment
+set(TOOLCHAIN_ROOT ${TOOLCHAIN_BIN_DIR})
+set(TOOLCHAIN_PREFIX                arm-none-eabi-)
+
+set(CMAKE_C_COMPILER                ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}gcc)
+set(CMAKE_ASM_COMPILER              ${CMAKE_C_COMPILER})
+set(CMAKE_CXX_COMPILER              ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}g++)
+set(CMAKE_LINKER                    ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}g++)
+set(CMAKE_AR                        ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}ar)
+set(CMAKE_RANLIB                    ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}ranlib)
+set(CMAKE_OBJCOPY                   ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}objcopy)
+set(CMAKE_SIZE                      ${TOOLCHAIN_ROOT}/${TOOLCHAIN_PREFIX}size)
+
+set(CMAKE_EXECUTABLE_SUFFIX_ASM     ".elf")
+set(CMAKE_EXECUTABLE_SUFFIX_C       ".elf")
+set(CMAKE_EXECUTABLE_SUFFIX_CXX     ".elf")
+
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+
+# MCU specific flags
+set(TARGET_FLAGS "-mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard ")
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${TARGET_FLAGS}")
+set(CMAKE_ASM_FLAGS "${CMAKE_C_FLAGS} -x assembler-with-cpp -MMD -MP")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fdata-sections -ffunction-sections")
+
+set(CMAKE_C_FLAGS_DEBUG "-O0 -g3")
+set(CMAKE_C_FLAGS_RELEASE "-Os -g0")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g3")
+set(CMAKE_CXX_FLAGS_RELEASE "-Os -g0")
+
+set(CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -fno-rtti -fno-exceptions -fno-threadsafe-statics")
+
+set(CMAKE_EXE_LINKER_FLAGS "${TARGET_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -T \\"${CMAKE_SOURCE_DIR}/STM32H753XX_FLASH.ld\\"")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --specs=nano.specs")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-Map=${CMAKE_PROJECT_NAME}.map -Wl,--gc-sections")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--print-memory-usage")
+set(TOOLCHAIN_LINK_LIBRARIES "m")
 '''
 }
 
@@ -248,8 +296,13 @@ def main():
             elf_name = 'firmware'  # Fallback default
             print(f'Warning: Could not detect ELF name, using default: {elf_name}')
     
+    # Extract toolchain bin directory from toolchain_gcc path
+    toolchain_gcc = cfg.get('toolchain_gcc', '')
+    toolchain_bin_dir = os.path.dirname(toolchain_gcc) if toolchain_gcc else ''
+    
     mapping = {
-        'TOOLCHAIN_GCC': cfg.get('toolchain_gcc', ''),
+        'TOOLCHAIN_GCC': toolchain_gcc,
+        'TOOLCHAIN_BIN_DIR': toolchain_bin_dir,
         'GDB_PATH': cfg.get('gdb', ''),
         'OPENOCD_PATH': cfg.get('openocd', ''),
         'BUILD_DIR': cfg.get('build_dir', 'build/Debug'),
@@ -261,9 +314,11 @@ def main():
     }
 
     vscode_dir = os.path.join(ROOT, '.vscode')
+    cmake_dir = os.path.join(ROOT, 'cmake')
 
-    # Ensure .vscode directory exists
+    # Ensure directories exist
     os.makedirs(vscode_dir, exist_ok=True)
+    os.makedirs(cmake_dir, exist_ok=True)
 
     for name in TEMPLATES:
         template = EMBED_TEMPLATES.get(name)
@@ -271,7 +326,13 @@ def main():
             print('No embedded template for', name)
             continue
         new_text = replace_placeholders(template, mapping)
-        path = os.path.join(vscode_dir, name)
+        
+        # Write cmake files to cmake/ directory, others to .vscode/
+        if name.endswith('.cmake'):
+            path = os.path.join(cmake_dir, name)
+        else:
+            path = os.path.join(vscode_dir, name)
+        
         with open(path, 'w', encoding='utf-8') as f:
             f.write(new_text)
         print('Wrote', path)
