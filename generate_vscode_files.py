@@ -20,6 +20,7 @@ Run from the workspace root: python3 .vscode/generate_vscode.py
 import json
 import os
 import platform
+import re
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
@@ -69,8 +70,8 @@ EMBED_TEMPLATES = {
             ],
 
             "runToEntryPoint": "main",
-            "svdFile": "${SVD_FILE}"
-            
+            "svdFile": "${SVD_FILE}",
+            "preLaunchTask": "CMake: Build (Debug)"
         },
         {
             "name": "Attach (OpenOCD)",
@@ -86,7 +87,8 @@ EMBED_TEMPLATES = {
                 "target/${STM32_TARGET}"
             ],
 
-            "svdFile": "${SVD_FILE}"
+            "svdFile": "${SVD_FILE}",
+            "preLaunchTask": "CMake: Build (Debug)"
         }
     ]
 }
@@ -202,6 +204,31 @@ def load_platform_config():
         key = 'linux'
     return cfg.get(key, cfg.get('linux'))
 
+def detect_elf_name():
+    """Auto-detect the ELF name from CMakeLists.txt by parsing CMAKE_PROJECT_NAME."""
+    cmake_file = os.path.join(ROOT, 'CMakeLists.txt')
+    if not os.path.exists(cmake_file):
+        return None
+    
+    with open(cmake_file, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Look for set(CMAKE_PROJECT_NAME xxx)
+    match = re.search(r'set\s*\(\s*CMAKE_PROJECT_NAME\s+([^\s\)]+)\s*\)', content)
+    if match:
+        return match.group(1)
+    
+    # Also try to find project(xxx)
+    match = re.search(r'project\s*\(\s*([^\s\)]+)\s*\)', content)
+    if match:
+        project_name = match.group(1)
+        # Check if it's a variable reference
+        if project_name.startswith('${') and project_name.endswith('}'):
+            return None  # Already handled by CMAKE_PROJECT_NAME
+        return project_name
+    
+    return None
+
 def replace_placeholders(text, mapping):
     for k, v in mapping.items():
         text = text.replace('${' + k + '}', v)
@@ -209,6 +236,18 @@ def replace_placeholders(text, mapping):
 
 def main():
     cfg = load_platform_config()
+    
+    # Auto-detect ELF name from CMakeLists.txt if not specified
+    elf_name = cfg.get('elf_name')
+    if not elf_name:
+        detected_elf = detect_elf_name()
+        if detected_elf:
+            elf_name = detected_elf
+            print(f'Auto-detected ELF name from CMakeLists.txt: {elf_name}')
+        else:
+            elf_name = 'firmware'  # Fallback default
+            print(f'Warning: Could not detect ELF name, using default: {elf_name}')
+    
     mapping = {
         'TOOLCHAIN_GCC': cfg.get('toolchain_gcc', ''),
         'GDB_PATH': cfg.get('gdb', ''),
@@ -217,7 +256,7 @@ def main():
         'COMPILE_COMMANDS': cfg.get('compile_commands', '${workspaceFolder}/build/Debug/compile_commands.json'),
         'STM32_DEVICE': cfg.get('stm32_device', 'STM32L476xx'),
         'STM32_TARGET': cfg.get('stm32_target', 'stm32l4x.cfg'),
-        'ELF_NAME': cfg.get('elf_name', 'StepperDEV'),
+        'ELF_NAME': elf_name,
         'SVD_FILE': cfg.get('svd_file', '')
     }
 

@@ -7,7 +7,6 @@
         "compile_commands": "${workspaceFolder}/build/Debug/compile_commands.json",
         "stm32_device": "STM32H753xx",
         "stm32_target": "stm32h7x.cfg",
-        "elf_name": "demo-code",
         "svd_file": "STM32H753.svd"
     },
     "windows": {
@@ -18,7 +17,6 @@
         "compile_commands": "${workspaceFolder}/build/Debug/compile_commands.json",
         "stm32_device": "STM32H753xx",
         "stm32_target": "stm32h7x.cfg",
-        "elf_name": "demo-code",
         "svd_file": "STM32H753.svd"
     }
 }
