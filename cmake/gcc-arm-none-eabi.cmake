@@ -5,7 +5,7 @@ set(CMAKE_C_COMPILER_ID GNU)
 set(CMAKE_CXX_COMPILER_ID GNU)
 
 # Some default GCC settings
-# arm-none-eabi- must be part of path environment
+# arm-none-eabi- must be part of path environment dt
 set(TOOLCHAIN_ROOT /opt/toolchains/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin)
 set(TOOLCHAIN_PREFIX                arm-none-eabi-)
 
