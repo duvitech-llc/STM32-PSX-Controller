@@ -59,3 +59,5 @@ Thumbs.db
 *.suo
 *.userosscache
 *.sln.docstates
+# Platform-specific settings
+platform.json
