@@ -22,6 +22,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
@@ -60,7 +61,7 @@ EMBED_TEMPLATES = {
             "name": "Debug (OpenOCD)",
             "type": "cortex-debug",
             "request": "launch",
-            "executable": "${workspaceFolder}/${BUILD_DIR}/${ELF_NAME}.elf",
+            "executable": "${workspaceFolder}/${BUILD_DIR}/Debug/${ELF_NAME}.elf",
 
             "servertype": "openocd",
             "gdbPath": "${GDB_PATH}",
@@ -78,7 +79,7 @@ EMBED_TEMPLATES = {
             "name": "Attach (OpenOCD)",
             "type": "cortex-debug",
             "request": "attach",
-            "executable": "${workspaceFolder}/${BUILD_DIR}/${ELF_NAME}.elf",
+            "executable": "${workspaceFolder}/${BUILD_DIR}/Debug/${ELF_NAME}.elf",
 
             "servertype": "openocd",
             "gdbPath": "${GDB_PATH}",
@@ -120,7 +121,7 @@ EMBED_TEMPLATES = {
             "command": "cmake",
             "args": [
                 "--build",
-                "${workspaceFolder}/${BUILD_DIR}",
+                "${workspaceFolder}/${BUILD_DIR}/Debug",
                 "--config",
                 "Debug",
                 "--target",
@@ -151,9 +152,25 @@ EMBED_TEMPLATES = {
             "command": "cmake",
             "args": [
                 "--build",
-                "${workspaceFolder}/${BUILD_DIR}",
+                "${workspaceFolder}/${BUILD_DIR}/Debug",
                 "--target",
                 "clean"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "options": {
+                "env": {
+                    "PATH": "${TOOLCHAIN_BIN_PATH}:${env:PATH}"
+                }
+            }
+        },
+        {
+            "label": "CMake: Configure (Release)",
+            "type": "shell",
+            "command": "cmake",
+            "args": [
+                "--preset",
+                "Release"
             ],
             "group": "build",
             "problemMatcher": [],
@@ -169,7 +186,7 @@ EMBED_TEMPLATES = {
             "command": "cmake",
             "args": [
                 "--build",
-                "${workspaceFolder}/build/Release",
+                "${workspaceFolder}/${BUILD_DIR}/Release",
                 "--config",
                 "Release",
                 "--target",
@@ -181,6 +198,9 @@ EMBED_TEMPLATES = {
             "problemMatcher": [
                 "$gcc"
             ],
+            "dependsOn": [
+                "CMake: Configure (Release)"
+            ],
             "options": {
                 "env": {
                     "PATH": "${TOOLCHAIN_BIN_PATH}:${env:PATH}"
@@ -188,7 +208,7 @@ EMBED_TEMPLATES = {
             }
         },
         {
-            "label": "Flash Firmware",
+            "label": "Flash Firmware (Debug)",
             "type": "shell",
             "command": "${OPENOCD_PATH}",
             "args": [
@@ -197,12 +217,33 @@ EMBED_TEMPLATES = {
                 "-f",
                 "target/${STM32_TARGET}",
                 "-c",
-                "program ${BUILD_DIR}/${ELF_NAME}.hex reset exit"
+                "program ${BUILD_DIR}/Debug/${ELF_NAME}.hex reset exit"
             ],
             "group": "build",
             "problemMatcher": [],
             "dependsOn": [
                 "CMake: Build (Debug)"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            }
+        },
+        {
+            "label": "Flash Firmware (Release)",
+            "type": "shell",
+            "command": "${OPENOCD_PATH}",
+            "args": [
+                "-f",
+                "interface/stlink.cfg",
+                "-f",
+                "target/${STM32_TARGET}",
+                "-c",
+                "program ${BUILD_DIR}/Release/${ELF_NAME}.hex reset exit"
+            ],
+            "group": "build",
+            "problemMatcher": [],
+            "dependsOn": [
+                "CMake: Build (Release)"
             ],
             "options": {
                 "cwd": "${workspaceFolder}"
@@ -268,7 +309,25 @@ def replace_placeholders(text, mapping):
 
 def main():
     cfg = load_platform_config()
-    
+
+    # Remove the Debug build directory if it exists
+    build_dir_base = cfg.get('build_dir', 'build')
+    debug_build_dir = os.path.join(ROOT, build_dir_base, 'Debug')
+    if os.path.exists(debug_build_dir):
+        print(f'Removing existing Debug build directory: {debug_build_dir}')
+        shutil.rmtree(debug_build_dir)
+
+    # Ensure .vscode directory exists
+    vscode_dir = os.path.join(ROOT, '.vscode')
+    if os.path.exists(vscode_dir):
+        print(f'Removing existing files in .vscode directory: {vscode_dir}')
+        for file_name in os.listdir(vscode_dir):
+            file_path = os.path.join(vscode_dir, file_name)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
+    os.makedirs(vscode_dir, exist_ok=True)
+
     # Auto-detect ELF name from CMakeLists.txt if not specified
     elf_name = cfg.get('elf_name')
     if not elf_name:
@@ -302,11 +361,6 @@ def main():
         'ELF_NAME': elf_name,
         'SVD_FILE': cfg.get('svd_file', '')
     }
-
-    vscode_dir = os.path.join(ROOT, '.vscode')
-
-    # Ensure .vscode directory exists
-    os.makedirs(vscode_dir, exist_ok=True)
 
     for name in TEMPLATES:
         template = EMBED_TEMPLATES.get(name)
