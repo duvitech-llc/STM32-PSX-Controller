@@ -137,13 +137,21 @@ Hardware configuration can be modified using STM32CubeMX by opening the `demo-co
 
 ## VS Code Integration
 
-This project includes pre-configured VS Code tasks for:
+This project includes pre-configured VS Code tasks and launch configurations for:
 - Building (Debug and Release)
 - Cleaning
 - Flashing firmware
 - Starting OpenOCD for debugging
 
-Access tasks via `Terminal > Run Task...` or use the keyboard shortcut.
+### Generating VS Code Files
+
+To generate the `.vscode` files (`launch.json` and `tasks.json`) required for building, debugging, and programming the firmware, create platform.json using the example as a guide then run the following script:
+
+```bash
+python ./generate_vscode_files.py
+```
+
+This script ensures that the VS Code environment is correctly set up for the project. Access tasks via `Terminal > Run Task...` or use the keyboard shortcut.
 
 ## License
 
